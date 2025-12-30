@@ -61,6 +61,8 @@ function ChatPageContent() {
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
   const [toolStatus, setToolStatus] = useState<ToolStatus | null>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
+  const streamTimeoutRef = useRef<number | null>(null)
   const [conversationId, setConversationId] = useState<number | null>(null)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [systemPrompt, setSystemPrompt] = useState('')
@@ -155,6 +157,46 @@ function ChatPageContent() {
     }
     return []
   }, [modelsData])
+
+  // Cleanup: Reset streaming state when conversation changes (React 2025 best practice)
+  useEffect(() => {
+    return () => {
+      // Abort any active stream
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+        abortControllerRef.current = null
+      }
+      // Clear timeout
+      if (streamTimeoutRef.current) {
+        clearTimeout(streamTimeoutRef.current)
+        streamTimeoutRef.current = null
+      }
+      // Reset streaming state
+      setIsStreaming(false)
+      setStreamingContent('')
+      setToolStatus(null)
+    }
+  }, [conversationId]) // Reset when conversation changes
+
+  // Safety net: Auto-reset stuck streams after 60 seconds
+  useEffect(() => {
+    if (isStreaming) {
+      streamTimeoutRef.current = setTimeout(() => {
+        console.warn('Stream timeout - auto-resetting')
+        setIsStreaming(false)
+        setStreamingContent('')
+        setToolStatus(null)
+        toast.error('Stream timed out. Please try again.')
+      }, 60000) // 60 second timeout
+
+      return () => {
+        if (streamTimeoutRef.current) {
+          clearTimeout(streamTimeoutRef.current)
+          streamTimeoutRef.current = null
+        }
+      }
+    }
+  }, [isStreaming])
 
   // Get current project
   const currentProject = projects.find(p => p.id === Number(projectId))
@@ -255,9 +297,13 @@ function ChatPageContent() {
     setIsStreaming(true)
     setStreamingContent('')
 
+    // Create new AbortController for this request
+    abortControllerRef.current = new AbortController()
+
     try {
       const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001/api/v1'
       const response = await fetch(`${baseUrl}/chat`, {
+        signal: abortControllerRef.current.signal,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -367,6 +413,12 @@ function ChatPageContent() {
       queryClient.invalidateQueries({ queryKey: ['project-documents', projectId] })
       queryClient.invalidateQueries({ queryKey: ['project-documents', Number(projectId)] })
     } catch (error) {
+      // Don't show error if request was aborted (user navigated away)
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('Request aborted')
+        return
+      }
+      
       console.error('Chat error:', error)
       toast.error('Failed to send message')
       
@@ -380,8 +432,31 @@ function ChatPageContent() {
     } finally {
       setIsStreaming(false)
       setStreamingContent('')
-      setToolStatus(null) // Clear tool status on error
+      setToolStatus(null)
+      abortControllerRef.current = null
+      
+      // Clear timeout
+      if (streamTimeoutRef.current) {
+        clearTimeout(streamTimeoutRef.current)
+        streamTimeoutRef.current = null
+      }
     }
+  }
+
+  // Manual reset function for stuck states
+  const handleResetStream = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+    if (streamTimeoutRef.current) {
+      clearTimeout(streamTimeoutRef.current)
+      streamTimeoutRef.current = null
+    }
+    setIsStreaming(false)
+    setStreamingContent('')
+    setToolStatus(null)
+    toast.success('Stream reset')
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -536,7 +611,26 @@ function ChatPageContent() {
                 <span className={useGpu ? "text-green-400" : "text-gray-400"}>⚡</span>
                 {useGpu ? "GPU" : "CPU"}
               </Button>
-              <Button variant="ghost" size="sm" onClick={openSettings} className="gap-1.5 h-7 text-xs">
+              
+              {/* Manual reset button - only show when streaming */}
+              {isStreaming && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={handleResetStream}
+                  className="gap-1.5 h-7 text-xs text-orange-500 hover:text-orange-700"
+                  title="Stop streaming and reset"
+                >
+                  ⏹️ Stop
+                </Button>
+              )}
+              
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={openSettings} 
+                className="gap-1.5 h-7 text-xs"
+              >
                 <Settings className="h-3 w-3" />
                 Settings
               </Button>
