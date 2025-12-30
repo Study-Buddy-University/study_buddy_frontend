@@ -68,6 +68,7 @@ function ChatPageContent() {
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false)
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false)
   const [selectedModel, setSelectedModel] = useState('llama3-groq-tool-use:8b')
+  const [availableModels, setAvailableModels] = useState<string[]>([])
   const [useGpu, setUseGpu] = useState(() => {
     // Migration: remove old gpu_enabled key
     if (localStorage.getItem('gpu_enabled') !== null) {
@@ -132,6 +133,29 @@ function ChatPageContent() {
       return Array.isArray(response) ? response : []
     },
   })
+
+  // Fetch available Ollama models
+  const { data: modelsData } = useQuery({
+    queryKey: ['ollama-models'],
+    queryFn: async () => {
+      const response = await api.get('/system/models') as {
+        success: boolean
+        models: { name: string; size: number; size_gb: number }[]
+        count: number
+      }
+      return response
+    },
+    retry: 1,
+    refetchInterval: 30000, // Refresh every 30 seconds
+  })
+
+  // Update available models when data changes
+  useEffect(() => {
+    if (modelsData?.success && modelsData?.models) {
+      const modelNames = modelsData.models.map((m: { name: string }) => m.name)
+      setAvailableModels(modelNames)
+    }
+  }, [modelsData])
 
   // Get current project
   const currentProject = projects.find(p => p.id === Number(projectId))
@@ -472,17 +496,32 @@ function ChatPageContent() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <optgroup label="⚡ Fast Models (CPU-friendly)">
-                    <SelectItem value="qwen2.5:0.5b">Qwen 2.5 Mini (0.5B) - Fastest</SelectItem>
-                    <SelectItem value="gemma2:2b">Gemma 2 (2B) - Very Fast</SelectItem>
-                    <SelectItem value="phi3:mini">Phi-3 Mini (3.8B) - Fast</SelectItem>
-                  </optgroup>
-                  <optgroup label="🚀 Full Models (Better Quality)">
-                    <SelectItem value="llama3-groq-tool-use:8b">Llama 3 Groq (8B)</SelectItem>
-                    <SelectItem value="llama3:8b">Llama 3 (8B)</SelectItem>
-                    <SelectItem value="qwen2.5:7b">Qwen 2.5 (7B)</SelectItem>
-                    <SelectItem value="mistral:7b">Mistral (7B)</SelectItem>
-                  </optgroup>
+                  {availableModels.length > 0 ? (
+                    <>
+                      {availableModels.filter(m => m.includes('0.5b') || m.includes('2b') || m.includes('mini')).length > 0 && (
+                        <optgroup label="⚡ Fast Models (CPU-friendly)">
+                          {availableModels
+                            .filter(m => m.includes('0.5b') || m.includes('2b') || m.includes('mini'))
+                            .map(model => (
+                              <SelectItem key={model} value={model}>{model}</SelectItem>
+                            ))}
+                        </optgroup>
+                      )}
+                      {availableModels.filter(m => !m.includes('0.5b') && !m.includes('2b') && !m.includes('mini')).length > 0 && (
+                        <optgroup label="🚀 Full Models (Better Quality)">
+                          {availableModels
+                            .filter(m => !m.includes('0.5b') && !m.includes('2b') && !m.includes('mini'))
+                            .map(model => (
+                              <SelectItem key={model} value={model}>{model}</SelectItem>
+                            ))}
+                        </optgroup>
+                      )}
+                    </>
+                  ) : (
+                    <optgroup label="Loading models...">
+                      <SelectItem value="llama3-groq-tool-use:8b">Loading...</SelectItem>
+                    </optgroup>
+                  )}
                 </SelectContent>
               </Select>
               <Button 
