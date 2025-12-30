@@ -178,7 +178,8 @@ function ChatPageContent() {
     }
   }, [conversationId]) // Reset when conversation changes
 
-  // Safety net: Auto-reset stuck streams after 60 seconds
+  // Safety net: Auto-reset stuck streams after 5 minutes
+  // Backend LLM timeout is 180s, tool execution can take longer without GPU
   useEffect(() => {
     if (isStreaming) {
       streamTimeoutRef.current = setTimeout(() => {
@@ -187,7 +188,7 @@ function ChatPageContent() {
         setStreamingContent('')
         setToolStatus(null)
         toast.error('Stream timed out. Please try again.')
-      }, 60000) // 60 second timeout
+      }, 300000) // 5 minute timeout (matches backend 180s + 120s buffer)
 
       return () => {
         if (streamTimeoutRef.current) {
