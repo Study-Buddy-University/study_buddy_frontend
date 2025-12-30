@@ -1,11 +1,11 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useMemo } from 'react'
 import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { Send, Mic, FolderKanban, X, Plus, Loader2, Settings } from 'lucide-react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
@@ -68,7 +68,6 @@ function ChatPageContent() {
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false)
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false)
   const [selectedModel, setSelectedModel] = useState('llama3-groq-tool-use:8b')
-  const [availableModels, setAvailableModels] = useState<string[]>([])
   const [useGpu, setUseGpu] = useState(() => {
     // Migration: remove old gpu_enabled key
     if (localStorage.getItem('gpu_enabled') !== null) {
@@ -149,12 +148,12 @@ function ChatPageContent() {
     refetchInterval: 30000, // Refresh every 30 seconds
   })
 
-  // Update available models when data changes
-  useEffect(() => {
+  // Derive available models from query data (React 2025 best practice: useMemo for derived state)
+  const availableModels = useMemo(() => {
     if (modelsData?.success && modelsData?.models) {
-      const modelNames = modelsData.models.map((m: { name: string }) => m.name)
-      setAvailableModels(modelNames)
+      return modelsData.models.map((m) => m.name)
     }
+    return []
   }, [modelsData])
 
   // Get current project
@@ -499,28 +498,31 @@ function ChatPageContent() {
                   {availableModels.length > 0 ? (
                     <>
                       {availableModels.filter(m => m.includes('0.5b') || m.includes('2b') || m.includes('mini')).length > 0 && (
-                        <optgroup label="⚡ Fast Models (CPU-friendly)">
+                        <SelectGroup>
+                          <SelectLabel>⚡ Fast Models (CPU-friendly)</SelectLabel>
                           {availableModels
                             .filter(m => m.includes('0.5b') || m.includes('2b') || m.includes('mini'))
                             .map(model => (
                               <SelectItem key={model} value={model}>{model}</SelectItem>
                             ))}
-                        </optgroup>
+                        </SelectGroup>
                       )}
                       {availableModels.filter(m => !m.includes('0.5b') && !m.includes('2b') && !m.includes('mini')).length > 0 && (
-                        <optgroup label="🚀 Full Models (Better Quality)">
+                        <SelectGroup>
+                          <SelectLabel>🚀 Full Models (Better Quality)</SelectLabel>
                           {availableModels
                             .filter(m => !m.includes('0.5b') && !m.includes('2b') && !m.includes('mini'))
                             .map(model => (
                               <SelectItem key={model} value={model}>{model}</SelectItem>
                             ))}
-                        </optgroup>
+                        </SelectGroup>
                       )}
                     </>
                   ) : (
-                    <optgroup label="Loading models...">
+                    <SelectGroup>
+                      <SelectLabel>Loading models...</SelectLabel>
                       <SelectItem value="llama3-groq-tool-use:8b">Loading...</SelectItem>
-                    </optgroup>
+                    </SelectGroup>
                   )}
                 </SelectContent>
               </Select>
